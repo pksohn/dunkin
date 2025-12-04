@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Arlington Dunkin' Dash</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Varela+Round&display=swap" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --dd-orange: #ff671f;
+            --dd-pink: #da1884;
+            --dd-brown: #653819;
+            --bg-offwhite: #fdfbf7;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none; /* Prevent text selection during frantic play */
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Varela Round', sans-serif;
+            background-color: var(--bg-offwhite);
+            color: var(--dd-brown);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Fredoka One', cursive;
+            margin: 0;
+        }
+
+        /* --- MAP CONTAINER --- */
+        #map {
+            height: 100%;
+            width: 100%;
+            z-index: 1;
+        }
+
+        /* --- UI OVERLAYS --- */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* --- TITLE SCREEN --- */
+        .logo-text {
+            font-size: 3rem;
+            color: var(--dd-orange);
+            text-shadow: 2px 2px 0px var(--dd-pink);
+            margin-bottom: 10px;
+        }
+        
+        .logo-sub {
+            color: var(--dd-pink);
+            font-size: 1.5rem;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            background: var(--dd-orange);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-family: 'Fredoka One', cursive;
+            border-radius: 50px;
+            cursor: pointer;
+            margin: 10px;
+            box-shadow: 0 4px 0 var(--dd-brown);
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        .btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 var(--dd-brown);
+        }
+
+        .btn-pink {
+            background: var(--dd-pink);
+        }
+
+        .difficulty-select {
+            display: flex;
+            flex-wrap: nowrap; /* ADDED: Forces buttons into a single row */
+            justify-content: center;
+            gap: 10px;
+            max-width: 600px;
+            width: 100%; /* Ensures it utilizes the horizontal space */
+            overflow-x: auto; /* Allows horizontal scrolling on small screens */
+            padding: 10px 5px; /* Added padding to ensure scrollbar visibility */
+        }
+
+        /* --- HUD --- */
+        #hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            pointer-events: none; /* Let clicks pass through to map */
+            z-index: 1000;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .hud-panel {
+            background: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            border: 3px solid var(--dd-pink);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            font-family: 'Fredoka One', cursive;
+            font-size: 1.2rem;
+            color: var(--dd-brown);
+            pointer-events: auto;
+        }
+
+        .hud-btn {
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .hud-btn:hover {
+            background: #fff0f5;
+        }
+
+        .timer-urgent {
+            color: red;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        /* --- CROSSHAIR / RETICLE --- */
+        #reticle-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 800;
+            pointer-events: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #reticle-ring {
+            border: 4px dashed var(--dd-pink);
+            background: rgba(218, 24, 132, 0.1);
+            border-radius: 50%;
+            transition: width 0.3s, height 0.3s;
+            box-shadow: 0 0 0 2000px rgba(0,0,0,0.1); /* Dim everything outside */
+        }
+
+        #reticle-center {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: var(--dd-orange);
+            border-radius: 50%;
+            border: 2px solid white;
+        }
+
+        /* --- GUESS BUTTON --- */
+        #guess-btn-container {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+        }
+
+        #guess-btn {
+            background: var(--dd-pink);
+            color: white;
+            border: 4px solid white;
+            padding: 20px 40px;
+            font-size: 1.5rem;
+            border-radius: 50px;
+            box-shadow: 0 6px 0 var(--dd-brown);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        #guess-btn:disabled {
+            background: #ccc;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        /* --- POPUPS --- */
+        .toast {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            border: 3px solid var(--dd-orange);
+            z-index: 2000;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s, transform 0.3s;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translate(-50%, -60%);
+        }
+
+        /* --- LIST OF LOCATIONS --- */
+        .location-list {
+            text-align: left;
+            margin-top: 20px;
+            background: #fff0f5;
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 400px;
+            font-size: 0.9rem;
+        }
+        .location-item {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px dashed var(--dd-pink);
+        }
+        .location-item.found {
+            text-decoration: line-through;
+            color: #aaa;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- MAP DIV -->
+    <div id="map"></div>
+
+    <!-- RETICLE (The Selection Area) -->
+    <div id="reticle-container" class="hidden">
+        <div id="reticle-ring"></div>
+        <div id="reticle-center"></div>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+        <div class="hud-panel">
+            <i class="fas fa-mug-hot" style="color:var(--dd-orange)"></i> Found: <span id="found-display">0/4</span>
+        </div>
+        
+        <div class="hud-panel hud-btn" onclick="resetGame()">
+            <i class="fas fa-home"></i> Quit
+        </div>
+
+        <div class="hud-panel" id="timer-panel">
+            <i class="fas fa-stopwatch"></i> <span id="timer">--:--</span>
+        </div>
+    </div>
+
+    <!-- GUESS BUTTON -->
+    <div id="guess-btn-container" class="hidden">
+        <button id="guess-btn" class="btn" onclick="makeGuess()">Confirm Location</button>
+    </div>
+
+    <!-- START SCREEN -->
+    <div id="start-screen" class="overlay">
+        <div class="logo-text">ARLINGTON DUNKIN' DASH</div>
+        <div class="logo-sub">Can you find all of the Dunkin' locations in town?</div>
+        
+        <p>Drag the map to center the target over a Dunkin' location.<br>Press <b>"CONFIRM LOCATION"</b> to verify your spot.</p>
+
+        <h3>Select Your Size (Difficulty)</h3>
+        <div class="difficulty-select">
+            <button class="btn" onclick="startGame('small')">
+                <i class="fas fa-coffee"></i> Small<br><span style="font-size:0.7em">Easy • 300s</span>
+            </button>
+            <button class="btn" onclick="startGame('medium')">
+                <i class="fas fa-mug-hot"></i> Medium<br><span style="font-size:0.7em">Normal • 120s</span>
+            </button>
+            <button class="btn" onclick="startGame('large')">
+                <i class="fas fa-glass-whiskey"></i> Large<br><span style="font-size:0.7em">Hard • 60s</span>
+            </button>
+            <button class="btn" onclick="startGame('xl')">
+                <i class="fas fa-prescription-bottle"></i> XL<br><span style="font-size:0.7em">X-Hard • 30s</span>
+            </button>
+        </div>
+        
+        <div style="margin-top:20px; font-size: 0.8em; color: #666;">
+            Proof of Concept • Arlington MA Data
+        </div>
+    </div>
+
+    <!-- GAME OVER SCREEN -->
+    <div id="game-over-screen" class="overlay hidden">
+        <h1 id="end-title" class="logo-text"></h1>
+        <p id="end-message" style="font-size: 1.2rem;"></p>
+        
+        <div class="location-list" id="end-list"></div>
+
+        <button class="btn btn-pink" onclick="resetGame()">Play Again</button>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast" class="toast">
+        Yum! Found one!
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <script>
+        // --- GAME DATA ---
+        const TOTAL_LOCATIONS = 4; // Constant for total locations
+
+        // Approximate coords for the 4 Arlington Dunkin Locations
+        const locations = [
+            { id: 1, address: "101 Broadway", lat: 42.4099936, lng: -71.1396463, found: false },
+            { id: 2, address: "1234 Mass Ave", lat: 42.4239737, lng: -71.1784661, found: false }, 
+            { id: 3, address: "21 Summer St", lat: 42.4195095, lng: -71.1531242, found: false },
+            { id: 4, address: "369 Mass Ave", lat: 42.4123615, lng: -71.1487196, found: false }
+        ];
+
+        // Difficulty Settings (hideTotal is used for L and XL)
+        const difficulties = {
+            'small':  { radius: 250, time: 300, zoom: 14, label: "Small", hideTotal: false }, 
+            'medium': { radius: 120, time: 120,  zoom: 14, label: "Medium", hideTotal: false }, 
+            'large':  { radius: 60,  time: 60,   zoom: 15, label: "Large", hideTotal: true }, 
+            'xl':     { radius: 30,  time: 30,   zoom: 15, label: "Extra Large", hideTotal: true } 
+        };
+
+        // State
+        let map;
+        let currentDifficulty = null;
+        let timerInterval;
+        let timeLeft;
+        let foundCount = 0;
+        let markers = [];
+
+        // Custom Icons
+        const dunkinIcon = L.divIcon({
+            html: '<div style="background:#fff; border: 2px solid #ff671f; border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; color:#da1884; font-size:16px;"><i class="fas fa-mug-hot"></i></div>',
+            className: 'custom-div-icon',
+            iconSize: [30, 30],
+            iconAnchor: [15, 15]
+        });
+
+        // --- INITIALIZATION ---
+        function initMap() {
+            // Initialize map centered on Arlington Center
+            map = L.map('map', {
+                zoomControl: false, // Hide default controls for game feel
+                attributionControl: false
+            }).setView([42.4155, -71.1565], 14);
+
+            // Add OpenStreetMap tiles (free)
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(map);
+        }
+
+        // --- HELPER FUNCTIONS ---
+
+        // Function to update the Found count display based on difficulty setting
+        function updateFoundDisplay() {
+            if (!currentDifficulty) return;
+            // Determine if we should show '?' or the actual total
+            const totalDisplay = currentDifficulty.hideTotal ? '?' : TOTAL_LOCATIONS;
+            document.getElementById('found-display').innerText = `${foundCount}/${totalDisplay}`;
+        }
+        
+        // --- GAME LOGIC ---
+
+        function startGame(difficultyKey) {
+            currentDifficulty = difficulties[difficultyKey];
+            
+            // Setup UI
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            document.getElementById('guess-btn-container').classList.remove('hidden');
+            document.getElementById('reticle-container').classList.remove('hidden');
+
+            // Setup Reticle Size (Visual approximation based on map zoom)
+            // Attach listeners here so they only run when game is active
+            map.on('zoomend', updateReticleSize);
+            map.on('move', updateReticleSize); 
+            
+            // Set Timer
+            if (currentDifficulty.time) {
+                timeLeft = currentDifficulty.time;
+                updateTimerDisplay();
+                timerInterval = setInterval(gameTick, 1000);
+            } else {
+                document.getElementById('timer').innerText = "∞";
+            }
+
+            // Update the found display (sets the denominator based on difficulty)
+            updateFoundDisplay();
+
+            // Set Map Zoom
+            map.setZoom(currentDifficulty.zoom);
+            
+            // Initial calculation
+            updateReticleSize();
+        }
+
+        function resetGame() {
+            // Stop timer
+            clearInterval(timerInterval);
+            
+            // Cleanup Listeners
+            if (map) {
+                map.off('zoomend', updateReticleSize);
+                map.off('move', updateReticleSize);
+            }
+            currentDifficulty = null;
+
+            // Reset Data
+            foundCount = 0;
+            // IMPORTANT: Reset the 'found' status of all locations
+            locations.forEach(l => l.found = false);
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            
+            // Reset UI
+            document.getElementById('found-display').innerText = `0/${TOTAL_LOCATIONS}`; // Reset display text
+            document.getElementById('timer').innerText = '--:--';
+            document.getElementById('timer').classList.remove('timer-urgent');
+
+            // Hide Game UI
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('guess-btn-container').classList.add('hidden');
+            document.getElementById('reticle-container').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+
+            // Show Start Screen
+            document.getElementById('start-screen').classList.remove('hidden');
+            
+            // Ensure the list is hidden on reset
+            document.getElementById('end-list').classList.add('hidden');
+        }
+
+        function updateReticleSize() {
+            // Prevent crash if game hasn't started
+            if (!currentDifficulty || !map) return;
+
+            // Calculate how many pixels the difficulty radius represents at current center/zoom
+            const center = map.getCenter();
+            
+            // Formula to calculate meters per pixel at the current latitude and zoom level
+            const metersPerPixel = 40075016.686 * Math.abs(Math.cos(center.lat * Math.PI / 180)) / Math.pow(2, map.getZoom() + 8);
+            const pixelRadius = currentDifficulty.radius / metersPerPixel;
+            
+            const ring = document.getElementById('reticle-ring');
+            if (ring) {
+                const size = pixelRadius * 2; // diameter
+                ring.style.width = `${size}px`;
+                ring.style.height = `${size}px`;
+            }
+        }
+
+        function gameTick() {
+            timeLeft--;
+            updateTimerDisplay();
+            if (timeLeft <= 0) {
+                endGame(false);
+            }
+        }
+
+        function updateTimerDisplay() {
+            const el = document.getElementById('timer');
+            const mins = Math.floor(timeLeft / 60);
+            const secs = timeLeft % 60;
+            el.innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
+            
+            if (timeLeft <= 10) {
+                el.classList.add('timer-urgent');
+            } else {
+                el.classList.remove('timer-urgent'); // Ensure it's removed if time is added/increased
+            }
+        }
+
+        function makeGuess() {
+            if (!currentDifficulty) return;
+            const center = map.getCenter();
+            let hit = false;
+            let hitLocation = null;
+
+            // Check distance to all UNFOUND locations
+            locations.forEach(loc => {
+                if (loc.found) return;
+
+                const dist = map.distance(center, [loc.lat, loc.lng]); // distance in meters
+                
+                if (dist <= currentDifficulty.radius) {
+                    // FOUND IT
+                    hit = true;
+                    hitLocation = loc;
+                    loc.found = true;
+                }
+            });
+
+            if (hit) {
+                handleSuccess(hitLocation);
+            } else {
+                showToast("Nothing here! Try moving closer.", "#653819");
+                animateShake();
+            }
+        }
+
+        function handleSuccess(loc) {
+            foundCount++;
+            updateFoundDisplay(); // Use the new function to update score display
+
+            // Add marker to map
+            const marker = L.marker([loc.lat, loc.lng], {icon: dunkinIcon}).addTo(map);
+            marker.bindPopup(`<b>${loc.address}</b><br>Found!`).openPopup();
+            markers.push(marker);
+
+            showToast("Nice! You found one!", "#da1884");
+
+            // Check Win Condition
+            if (foundCount === TOTAL_LOCATIONS) {
+                setTimeout(() => endGame(true), 1000);
+            }
+        }
+
+        function showToast(msg, color) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.style.borderColor = color;
+            toast.style.color = color;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+
+        function animateShake() {
+            const ring = document.getElementById('reticle-ring');
+            ring.style.transform = "translateX(5px)";
+            setTimeout(() => ring.style.transform = "translateX(-5px)", 50);
+            setTimeout(() => ring.style.transform = "translateX(5px)", 100);
+            setTimeout(() => ring.style.transform = "translateX(0)", 150);
+        }
+
+        function endGame(victory) {
+            clearInterval(timerInterval);
+            
+            // Cleanup listeners
+            if (map) {
+                map.off('zoomend', updateReticleSize);
+                map.off('move', updateReticleSize);
+            }
+
+            const screen = document.getElementById('game-over-screen');
+            const title = document.getElementById('end-title');
+            const msg = document.getElementById('end-message');
+            const list = document.getElementById('end-list');
+
+            screen.classList.remove('hidden');
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('guess-btn-container').classList.add('hidden');
+            document.getElementById('reticle-container').classList.add('hidden');
+
+            if (victory) {
+                // Calculate time taken
+                const initialTime = currentDifficulty.time;
+                const timeTakenSeconds = initialTime - timeLeft;
+                const mins = Math.floor(timeTakenSeconds / 60);
+                const secs = timeTakenSeconds % 60;
+                const timeTakenDisplay = `${mins}:${secs.toString().padStart(2, '0')}`;
+
+                title.innerText = "SWEET VICTORY!";
+                title.style.color = "var(--dd-orange)";
+                
+                // Display time taken in the message
+                // Changed "complete the hunt" to "locate them"
+                msg.innerText = `You found all the Dunkin' locations in Arlington! It took you ${timeTakenDisplay} to locate them. Time for a coffee?`;
+                
+                list.classList.remove('hidden'); // Show list on victory
+
+                // Build list summary ONLY on Victory
+                let html = "<h4>Locations:</h4>";
+                // Added a note about the difficulty level's hidden total if applicable
+                if (currentDifficulty.hideTotal) {
+                    html = `<h4>Locations Found (${TOTAL_LOCATIONS} Total):</h4>`;
+                } else {
+                    html = "<h4>Locations:</h4>";
+                }
+                
+                locations.forEach(loc => {
+                    // Changed "Missed" to "Not Located"
+                    const status = loc.found ? '<i class="fas fa-check" style="color:green"></i> Located' : '<i class="fas fa-times" style="color:red"></i> Not Located';
+                    html += `<div class="location-item ${loc.found ? 'found' : ''}">
+                        <b>${loc.address}</b> - ${status}
+                    </div>`;
+                });
+                list.innerHTML = html;
+
+            } else {
+                title.innerText = "OUT OF TIME!";
+                title.style.color = "var(--dd-brown)";
+                msg.innerText = `You found ${foundCount} out of ${TOTAL_LOCATIONS}. Better luck next time!`;
+                
+                // Hide the list element when time runs out
+                list.innerHTML = ''; 
+                list.classList.add('hidden');
+            }
+        }
+
+        // Initialize
+        initMap();
+
+    </script>
+</body>
+</html>
